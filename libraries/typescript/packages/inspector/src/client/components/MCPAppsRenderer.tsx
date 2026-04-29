@@ -116,6 +116,10 @@ interface MCPAppsRendererProps {
   cancelled?: boolean;
   /** Called when the CSP mode changes after the widget is already loaded, requesting the tool to be re-executed. */
   onRerun?: () => void;
+  /** Called once when the iframe has loaded and the AppBridge handshake completes. Used by the preview/screenshot route. */
+  onReady?: () => void;
+  /** When true in fullscreen mode, suppresses the fullscreen navbar + top padding so the iframe fills the viewport edge-to-edge. Used by the preview/screenshot route. */
+  chromeless?: boolean;
 }
 
 function MCPAppsRendererBase({
@@ -138,6 +142,8 @@ function MCPAppsRendererBase({
   customProps,
   cancelled,
   onRerun,
+  onReady,
+  chromeless,
 }: MCPAppsRendererProps) {
   const sandboxRef = useRef<SandboxedIframeHandle>(null);
   const bridgeRef = useRef<AppBridge | null>(null);
@@ -1034,6 +1040,16 @@ function MCPAppsRendererBase({
   // even if the onLoad event was missed during a rapid remount/re-render cycle.
   const iframeEffectivelyReady = isReady || initCount > 0;
 
+  // Fire onReady once after the AppBridge handshake completes (initCount goes 0 → 1).
+  const readyFiredRef = useRef(false);
+  useEffect(() => {
+    if (readyFiredRef.current) return;
+    if (initCount > 0) {
+      readyFiredRef.current = true;
+      onReady?.();
+    }
+  }, [initCount, onReady]);
+
   useEffect(() => {
     if (!iframeEffectivelyReady || !showSpinner) return;
 
@@ -1108,7 +1124,7 @@ function MCPAppsRendererBase({
             : undefined
         }
       >
-        {isFullscreen && (
+        {isFullscreen && !chromeless && (
           <FullscreenNavbar
             title={toolName}
             onClose={() => handleDisplayModeChange("inline")}
@@ -1132,7 +1148,7 @@ function MCPAppsRendererBase({
         <div
           className={cn(
             "flex-1 w-full h-full flex justify-center items-center relative",
-            isFullscreen && "pt-14",
+            isFullscreen && !chromeless && "pt-14",
             !isPip && !isFullscreen && (invoking || invoked) && "pt-8"
           )}
         >
@@ -1211,6 +1227,8 @@ function mcpAppsRendererAreEqual(
   if (prev.readResource !== next.readResource) return false;
   if (prev.onSendFollowUp !== next.onSendFollowUp) return false;
   if (prev.onRerun !== next.onRerun) return false;
+  if (prev.onReady !== next.onReady) return false;
+  if (prev.chromeless !== next.chromeless) return false;
   if (prev.onDisplayModeChange !== next.onDisplayModeChange) return false;
   if (prev.className !== next.className) return false;
   if (prev.serverBaseUrl !== next.serverBaseUrl) return false;
